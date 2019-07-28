@@ -3,7 +3,7 @@ import numpy as np
 
 def near_table(X):
     diff = np.expand_dims(X, axis=2) - X[:, np.newaxis]
-    return np.sqrt(np.einsum('...ijk,...ijk->...ij', diff, diff)).squeeze()
+    return np.sqrt(np.einsum('...jk,...jk->...j', diff, diff)).squeeze()
 
 
 def difference_measure_sq(X, l=1.0):
