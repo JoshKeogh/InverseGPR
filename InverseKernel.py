@@ -14,11 +14,19 @@ def _near_table(X):
     r_ij    : numpy.ndarray, shape (n_samples_X, n_atoms, n_atoms)
             The Euclidean distance between each of the atoms within a sample
     """
-    diff = np.expand_dims(X, axis=2) - X[:, np.newaxis]
+    diff = X[:, :, np.newaxis] - X[:, np.newaxis]
     return np.sqrt(np.einsum('...jk,...jk->...j', diff, diff)).squeeze()
 
 
-def _difference_measure_sq(x_left, x_right=None, l=1.0):
+a_0 = [0.77, 0.32, 0.32, 0.32, 0.32]
+
+
+def __pairtype_scale(length_scale):
+    a_0 = np.array(length_scale)
+    return np.ones((len(a_0), len(a_0))) * a_0[:, np.newaxis] + a_0[:, np.newaxis].T
+
+
+def _difference_measure_sq(x_left, x_right=None):
     """Computes the square of the difference measure, which is defined as
     D(x, x')^2 = sigma_i sigma_j (1/r_ij(x) - 1/r_ij(x'))^2 / l^2
     where r_ij = sqrt(sigma_d (x_id - x_jd)^2)
@@ -37,16 +45,18 @@ def _difference_measure_sq(x_left, x_right=None, l=1.0):
     D   : numpy.ndarray, shape (n_samples_right, n_samples_left)
         Difference measure using inverted inter-atomic distances
     """
-    inv = lambda x: np.triu(1 / _near_table(x), k=1)
+    length_scale = __pairtype_scale(a_0)
+
+    inv = lambda x: np.divide(np.triu(np.reciprocal(_near_table(x)), k=1),
+                              length_scale)
     with np.errstate(divide='ignore'):
-        if x_right is None:
-            invR = inv(x_left)
-            return np.sum((invR[:, np.newaxis] - invR[np.newaxis, :])**2, axis=(2, 3))
-        else:
-            return np.sum((inv(x_left)[:, np.newaxis] - inv(x_right)[np.newaxis, :])**2, axis=(2, 3)) / l**2
+        invR_left = inv(x_left)
+        invR_right = inv(x_right) if x_right is not None else invR_left
+
+    return np.sum((invR_left[:, np.newaxis] - invR_right[np.newaxis, :]) ** 2, axis=(2, 3))
 
 
-def _gram_matrix(x_left, x_right=None, l=1.0):
+def _gram_matrix(x_left, x_right=None):
     """Generate the squared-exponential kernel given by
     k(x_i, x_j) = exp(-1/2 * D(x_left / l, x_right / l)^2)
     where D is the difference measure using inverse inter-atomic distances.
@@ -62,12 +72,13 @@ def _gram_matrix(x_left, x_right=None, l=1.0):
     Returns
     -------
     K(x, x')    : numpy.ndarray, shape (n_samples_right, n_samples_left)
-                Difference measure using inverted inter-atomic distances
+                The covariance matrix for the kernel
     """
     format = lambda x: np.reshape(x, (-1, int(len(x[0]) / 3), 3))
     x1 = format(x_left)
-    x2 = None if x_right is None else format(x_right)
-    diff = _difference_measure_sq(x1, x2, l)
+    x2 = format(x_right) if x_right is not None else None
+
+    diff = _difference_measure_sq(x1, x2)
     return np.exp(-0.5 * diff)
 
 
@@ -110,14 +121,13 @@ class InverseKernel(kernel.StationaryKernelMixin, kernel.NormalizedKernelMixin, 
             Kernel k(X, Y)
         """
         if Y is None:
-            K = _gram_matrix(X, l=self.length_scale)
+            K = _gram_matrix(X)
         else:
             if eval_gradient:
                 raise ValueError(
                     "Gradient can only be evaluated when Y is None.")
-            K = _gram_matrix(X, Y, l=self.length_scale)
+            K = _gram_matrix(X, Y)
 
-        print("K.shape", K.shape)
         if eval_gradient:
             raise NotImplementedError("eval_gradient not implemented in __call__")
 
