@@ -87,16 +87,16 @@ def dostuff():
         with np.errstate(divide='ignore'):
             inv_r = 1. / _near_table(x)
 
-        inv_r_train, inv_r_test, y_train, y_test = train_test_split(inv_r, y, test_size=0.2, random_state=0)
+        inv_r_train, inv_r_test, y_train, y_test = train_test_split(inv_r[:, triu_indices[0], triu_indices[1]], y, test_size=0.2, random_state=0)
 
         triu_indices = np.triu_indices_from(inv_r_train[0], k=1)
 
         kernel = WhiteKernel(noise_level=1e-3) + RBF(length_scale=length_scale)
 
         gp = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=5)
-        gp.fit(inv_r_train[:, triu_indices[0], triu_indices[1]], y_train)
+        gp.fit(inv_r_train, y_train)
 
-        y_pred = gp.predict(inv_r_test[:, triu_indices[0], triu_indices[1]])
+        y_pred = gp.predict(inv_r_test)
 
         display(y_test, y_pred, np.median(y), kernel_type="Inverted Distances with RBF")#, out_path='data/', index=str(i))
 
